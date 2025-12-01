@@ -127,10 +127,10 @@ Binarios listos en:
 dist/
 ├─ bascula-local
 ├─ bascula-windows-amd64.exe
+├─ bascula-windows-386.exe
 ├─ bascula-macos-arm64
 ├─ bascula-macos-amd64
 └─ bascula-linux-amd64
-
 
 ⸻
 
@@ -149,6 +149,9 @@ La modificacion de la variable SERVER_PORT del archivo .env provocara un fallo e
 
 Windows
 
+Arquitectura x64: bascula-windows-amd64.exe
+Arquitectura x32: bascula-windows-386.exe
+
 Archivos necesarios:
 	•	bascula-windows-amd64.exe
 	•	.env
@@ -163,7 +166,10 @@ Autoarranque: Task Scheduler o carpeta shell:startup.
 
 ⸻
 
-macOS (Intel y ARM)
+macOS 
+
+M1, M2...: bascula-macos-arm64
+Intel: bascula-macos-amd64
 
 Copiar archivos a:
 

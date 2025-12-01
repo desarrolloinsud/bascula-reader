@@ -13,6 +13,9 @@ go build -o "${DIST_DIR}/bascula-local" ./cmd
 echo ">> Construyendo para Windows (amd64)..."
 GOOS=windows GOARCH=amd64 go build -o "${DIST_DIR}/bascula-windows-amd64.exe" ./cmd
 
+echo ">> Construyendo para Windows 32 bits (386)..."
+GOOS=windows GOARCH=386 go build -o "${DIST_DIR}/bascula-windows-386.exe" ./cmd
+
 echo ">> Construyendo para macOS (arm64 - M1/M2/M3)..."
 GOOS=darwin GOARCH=arm64 go build -o "${DIST_DIR}/bascula-macos-arm64" ./cmd
 
