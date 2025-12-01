@@ -159,11 +159,9 @@ dist/
 
 Verifica que la báscula está conectada y el puerto `7070` está libre y operativo.
 
-1. Descargar el ejecutable según tu sistema operativo desde `dist/`.
-2. Descargar `.env.example`.
-3. Renombrar a `.env`.
-4. Editar las variables necesarias según el hardware.
-5. Guardar `.env` en la *misma carpeta* del ejecutable.
+1. Descargar la carpeta según tu sistema operativo desde `dist/`.
+3. Editar las variables necesarias según el hardware.
+4. Guardar `.env` en la *misma carpeta* del ejecutable.
 
 ⚠️ **Advertencia:** cambiar `SERVER_PORT` romperá la demo de la plataforma CFC.
 
