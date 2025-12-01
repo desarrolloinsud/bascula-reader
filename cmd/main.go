@@ -29,7 +29,14 @@ func main() {
 	go s.StartReading()
 
 	// HTTP server
-	httpSrv := server.New(s, cfg.ServerPort, cfg.AllowedOrigin)
+	httpSrv := server.NewHTTPServer(
+		s,
+		cfg.ServerPort,
+		cfg.AllowedOrigin,
+		cfg.SerialPort,
+		cfg.BaudRate,
+		cfg.UseMock,
+	)
 	if err := httpSrv.Start(); err != nil {
 		log.Fatalf("Error iniciando HTTP server: %v", err)
 	}

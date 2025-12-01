@@ -8,7 +8,7 @@ import (
 )
 
 type MockScale struct {
-	*SerialScale // reutilizamos lógica de pub/sub / last
+	*SerialScale 
 }
 
 func NewMockScale(scaleID string) *MockScale {

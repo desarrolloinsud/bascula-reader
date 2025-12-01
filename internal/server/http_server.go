@@ -14,13 +14,19 @@ type HTTPServer struct {
 	scale         domain.Scale
 	addr          string
 	allowedOrigin string
+	serialPort string
+	baudRate   int
+	useMock    bool
 }
 
-func New(scale domain.Scale, port string, allowedOrigin string) *HTTPServer {
+func NewHTTPServer(scale domain.Scale, port string, allowedOrigin string, serialPort string, baudRate int, useMock bool) *HTTPServer {
 	return &HTTPServer{
 		scale:         scale,
 		addr:          "127.0.0.1:" + port,
 		allowedOrigin: allowedOrigin,
+		serialPort:    serialPort,
+		baudRate:      baudRate,
+		useMock:       useMock,
 	}
 }
 
@@ -41,13 +47,19 @@ func (s *HTTPServer) handleStatus(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNoContent)
 		return
 	}
+
 	reading := s.scale.LastReading()
+
 	resp := map[string]interface{}{
 		"status":       "running",
+		"serial_port":  s.serialPort,
+		"baud_rate":    s.baudRate,
+		"use_mock":     s.useMock,
 		"last_weight":  reading.Weight,
 		"last_read_at": reading.Time.Format(time.RFC3339),
 		"scale_id":     reading.ScaleID,
 	}
+
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(resp)
 }
