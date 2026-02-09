@@ -3,23 +3,25 @@ package server
 import (
 	"encoding/json"
 	"fmt"
-	"log"
 	"net/http"
 	"time"
 
 	"bascula-connector/internal/domain"
+	"bascula-connector/internal/logger"
+	"bascula-connector/internal/status"
 )
 
 type HTTPServer struct {
 	scale         domain.Scale
 	addr          string
 	allowedOrigin string
-	serialPort string
-	baudRate   int
-	useMock    bool
+	serialPort    string
+	baudRate      int
+	useMock       bool
+	statusSender  *status.StatusSender
 }
 
-func NewHTTPServer(scale domain.Scale, port string, allowedOrigin string, serialPort string, baudRate int, useMock bool) *HTTPServer {
+func NewHTTPServer(scale domain.Scale, port string, allowedOrigin string, serialPort string, baudRate int, useMock bool, statusSender *status.StatusSender) *HTTPServer {
 	return &HTTPServer{
 		scale:         scale,
 		addr:          "127.0.0.1:" + port,
@@ -27,18 +29,56 @@ func NewHTTPServer(scale domain.Scale, port string, allowedOrigin string, serial
 		serialPort:    serialPort,
 		baudRate:      baudRate,
 		useMock:       useMock,
+		statusSender:  statusSender,
 	}
 }
 
 func (s *HTTPServer) Start() error {
 	mux := http.NewServeMux()
 
-	mux.HandleFunc("/status", s.handleStatus)
-	mux.HandleFunc("/weight", s.handleWeight)
-	mux.HandleFunc("/stream", s.handleStream)
+	mux.HandleFunc("/status", s.loggingMiddleware(s.handleStatus))
+	mux.HandleFunc("/weight", s.loggingMiddleware(s.handleWeight))
+	mux.HandleFunc("/stream", s.loggingMiddleware(s.handleStream))
 
-	log.Printf("Servidor HTTP escuchando en http://%s ...", s.addr)
+	appLogger := logger.Get()
+	appLogger.Info("Servidor HTTP escuchando en http://%s ...", s.addr)
 	return http.ListenAndServe(s.addr, mux)
+}
+
+// loggingMiddleware registra todas las peticiones HTTP
+func (s *HTTPServer) loggingMiddleware(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		start := time.Now()
+		appLogger := logger.Get()
+
+		// Crear un ResponseWriter que capture el status code
+		lw := &loggingResponseWriter{ResponseWriter: w, statusCode: http.StatusOK}
+
+		// Ejecutar el handler
+		next(lw, r)
+
+		// Calcular duración
+		duration := time.Since(start)
+
+		// Registrar la petición
+		appLogger.HTTPRequest(r.Method, r.URL.Path, r.RemoteAddr, lw.statusCode, duration)
+
+		// También registrar errores si los hay
+		if lw.statusCode >= 400 {
+			appLogger.Error("HTTP Error: %s %s desde %s - Status: %d", r.Method, r.URL.Path, r.RemoteAddr, lw.statusCode)
+		}
+	}
+}
+
+// loggingResponseWriter envuelve http.ResponseWriter para capturar el status code
+type loggingResponseWriter struct {
+	http.ResponseWriter
+	statusCode int
+}
+
+func (lw *loggingResponseWriter) WriteHeader(code int) {
+	lw.statusCode = code
+	lw.ResponseWriter.WriteHeader(code)
 }
 
 func (s *HTTPServer) handleStatus(w http.ResponseWriter, r *http.Request) {
@@ -46,6 +86,17 @@ func (s *HTTPServer) handleStatus(w http.ResponseWriter, r *http.Request) {
 	if r.Method == http.MethodOptions {
 		w.WriteHeader(http.StatusNoContent)
 		return
+	}
+
+	// Enviar status al endpoint remoto cuando se consulta (solo en modo debug)
+	// El SendStatus() ya verifica internamente si está en modo debug
+	if s.statusSender != nil {
+		go func() {
+			if err := s.statusSender.SendStatus(); err != nil {
+				appLogger := logger.Get()
+				appLogger.Error("Error enviando status al consultar /status: %v", err)
+			}
+		}()
 	}
 
 	reading := s.scale.LastReading()
@@ -61,7 +112,10 @@ func (s *HTTPServer) handleStatus(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(resp)
+	if err := json.NewEncoder(w).Encode(resp); err != nil {
+		appLogger := logger.Get()
+		appLogger.Error("Error codificando respuesta JSON en /status: %v", err)
+	}
 }
 
 func (s *HTTPServer) handleWeight(w http.ResponseWriter, r *http.Request) {
@@ -72,7 +126,10 @@ func (s *HTTPServer) handleWeight(w http.ResponseWriter, r *http.Request) {
 	}
 	reading := s.scale.LastReading()
 	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(reading)
+	if err := json.NewEncoder(w).Encode(reading); err != nil {
+		appLogger := logger.Get()
+		appLogger.Error("Error codificando respuesta JSON en /weight: %v", err)
+	}
 }
 
 func (s *HTTPServer) handleStream(w http.ResponseWriter, r *http.Request) {
@@ -82,8 +139,11 @@ func (s *HTTPServer) handleStream(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	appLogger := logger.Get()
+
 	flusher, ok := w.(http.Flusher)
 	if !ok {
+		appLogger.Error("Streaming no soportado para cliente %s", r.RemoteAddr)
 		http.Error(w, "Streaming no soportado", http.StatusInternalServerError)
 		return
 	}
@@ -97,9 +157,13 @@ func (s *HTTPServer) handleStream(w http.ResponseWriter, r *http.Request) {
 
 	// enviar último valor si queremos
 	if lr := s.scale.LastReading(); lr.Weight != "" {
-		b, _ := json.Marshal(lr)
-		fmt.Fprintf(w, "data: %s\n\n", string(b))
-		flusher.Flush()
+		b, err := json.Marshal(lr)
+		if err != nil {
+			appLogger.Error("Error serializando lectura en /stream: %v", err)
+		} else {
+			fmt.Fprintf(w, "data: %s\n\n", string(b))
+			flusher.Flush()
+		}
 	}
 
 	notify := r.Context().Done()
@@ -109,8 +173,15 @@ func (s *HTTPServer) handleStream(w http.ResponseWriter, r *http.Request) {
 		case <-notify:
 			return
 		case reading := <-ch:
-			b, _ := json.Marshal(reading)
-			fmt.Fprintf(w, "data: %s\n\n", string(b))
+			b, err := json.Marshal(reading)
+			if err != nil {
+				appLogger.Error("Error serializando lectura en stream SSE: %v", err)
+				continue
+			}
+			if _, err := fmt.Fprintf(w, "data: %s\n\n", string(b)); err != nil {
+				appLogger.Error("Error escribiendo en stream SSE: %v", err)
+				return
+			}
 			flusher.Flush()
 		}
 	}
