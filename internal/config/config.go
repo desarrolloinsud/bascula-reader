@@ -33,7 +33,7 @@ func ensureEnvFile(envPath string) {
 func ensureEnvFileWithErrors(envPath string) error {
 	if _, err := os.Stat(envPath); os.IsNotExist(err) {
 		tmpl := `# Configuración del conector de báscula
-SERVER_PORT=7070
+SERVER_PORT=8080
 SERIAL_PORT=COM1
 BAUD_RATE=9600
 ALLOWED_ORIGIN=*
@@ -119,7 +119,7 @@ func LoadWithErrors(logWriter ...LogWriter) (Config, []string) {
 	}
 
 	cfg := Config{
-		ServerPort:        getEnv("SERVER_PORT", "7070"),
+		ServerPort:        getEnv("SERVER_PORT", "8080"),
 		AllowedOrigin:     getEnv("ALLOWED_ORIGIN", "*"),
 		UseMock:           getEnv("MOCK_SCALE", "false") == "true",
 		ScaleID:           getEnv("SCALE_ID", "bascula-1"),

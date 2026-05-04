@@ -15,8 +15,10 @@ type MockScale struct {
 func NewMockScale(scaleID string) *MockScale {
 	ms := &MockScale{
 		SerialScale: &SerialScale{
-			scaleID: scaleID,
-			clients: make(map[chan domain.WeightReading]struct{}),
+			scaleID:      scaleID,
+			clients:      make(map[chan domain.WeightReading]struct{}),
+			recentErrors: make([]string, 0, 10),
+			stopCh:       make(chan struct{}),
 		},
 	}
 	return ms
@@ -31,11 +33,17 @@ func (m *MockScale) StartReading() {
 	ticker := time.NewTicker(1 * time.Second)
 	defer ticker.Stop()
 
-	for range ticker.C {
-		weight += 0.5
-		raw := fmt.Sprintf("%.2f kg", weight)
-		appLogger.Debug("Modo MOCK: generando lectura simulada: %s", raw)
-		m.update(raw) // reutiliza update de SerialScale
+	for {
+		select {
+		case <-m.stopCh:
+			appLogger.Info("Modo MOCK detenido (scale_id=%s)", m.scaleID)
+			return
+		case <-ticker.C:
+			weight += 0.5
+			raw := fmt.Sprintf("%.2f kg", weight)
+			appLogger.Debug("Modo MOCK: generando lectura simulada: %s", raw)
+			m.update(raw)
+		}
 	}
 }
 

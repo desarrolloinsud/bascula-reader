@@ -24,7 +24,7 @@ create_env() {
   else
     cat > "${target_dir}/.env" <<'EOF'
 # Configuración del conector de báscula
-SERVER_PORT=7070
+SERVER_PORT=8080
 SERIAL_PORT=COM1
 BAUD_RATE=9600
 ALLOWED_ORIGIN=*

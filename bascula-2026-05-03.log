@@ -1,0 +1,44 @@
+2026/05/03 21:28:56 [INFO] === Inicio de sesión de logging ===
+2026/05/03 21:28:56 [INFO] Logging detallado: ACTIVADO
+2026/05/03 21:28:56 [INFO] Usando modo MOCK para la báscula
+2026/05/03 21:28:56 [INFO] Iniciando lectura de la báscula...
+2026/05/03 21:28:56 [INFO] Inicializando sistema de envío de status...
+2026/05/03 21:28:56 [INFO] Iniciando servidor HTTP en puerto 8082...
+2026/05/03 21:28:56 [INFO] ========================================
+2026/05/03 21:28:56 [INFO] ✅ APLICACIÓN INICIADA CORRECTAMENTE
+2026/05/03 21:28:56 [INFO] ========================================
+2026/05/03 21:28:56 [INFO] Servidor HTTP: http://127.0.0.1:8082
+2026/05/03 21:28:56 [INFO] Puerto Serial: MODO MOCK (sin puerto serial)
+2026/05/03 21:28:56 [INFO] Scale ID: bascula-2
+2026/05/03 21:28:56 [INFO] Modo Debug: true
+2026/05/03 21:28:56 [INFO] ========================================
+2026/05/03 21:28:56 [INFO] Iniciando modo MOCK de báscula (scale_id=bascula-2)
+2026/05/03 21:28:56 [DEBUG] Modo MOCK: generando lecturas simuladas cada 1 segundo
+2026/05/03 21:28:56 [INFO] Iniciando envío periódico de status cada 10 minutos a https://cfc.fresa.com.ar/pushBasculaStatus
+2026/05/03 21:28:56 [INFO] Servidor HTTP escuchando en http://127.0.0.1:8082 ...
+2026/05/03 21:28:57 [DEBUG] Status enviado exitosamente al endpoint https://cfc.fresa.com.ar/pushBasculaStatus
+2026/05/03 21:28:57 [DEBUG] Modo MOCK: generando lectura simulada: 0.50 kg
+2026/05/03 21:28:57 [DEBUG] Actualizando lectura: peso=0.50 kg, scale_id=bascula-2, tiempo=2026-05-03T21:28:57-03:00
+2026/05/03 21:28:57 [DEBUG] Transmitiendo lectura a 0 clientes suscritos
+2026/05/03 21:28:58 [DEBUG] Modo MOCK: generando lectura simulada: 1.00 kg
+2026/05/03 21:28:58 [DEBUG] Actualizando lectura: peso=1.00 kg, scale_id=bascula-2, tiempo=2026-05-03T21:28:58-03:00
+2026/05/03 21:28:58 [DEBUG] Transmitiendo lectura a 0 clientes suscritos
+2026/05/03 21:28:59 [DEBUG] Modo MOCK: generando lectura simulada: 1.50 kg
+2026/05/03 21:28:59 [DEBUG] Actualizando lectura: peso=1.50 kg, scale_id=bascula-2, tiempo=2026-05-03T21:28:59-03:00
+2026/05/03 21:28:59 [DEBUG] Transmitiendo lectura a 0 clientes suscritos
+2026/05/03 21:29:00 [DEBUG] Modo MOCK: generando lectura simulada: 2.00 kg
+2026/05/03 21:29:00 [DEBUG] Actualizando lectura: peso=2.00 kg, scale_id=bascula-2, tiempo=2026-05-03T21:29:00-03:00
+2026/05/03 21:29:00 [DEBUG] Transmitiendo lectura a 0 clientes suscritos
+2026/05/03 21:29:01 [DEBUG] Modo MOCK: generando lectura simulada: 2.50 kg
+2026/05/03 21:29:01 [DEBUG] Actualizando lectura: peso=2.50 kg, scale_id=bascula-2, tiempo=2026-05-03T21:29:01-03:00
+2026/05/03 21:29:01 [DEBUG] Transmitiendo lectura a 0 clientes suscritos
+2026/05/03 21:29:01 [HTTP] GET /ping desde 127.0.0.1:62385 - Status: 200 - Duración: 38.916µs
+2026/05/03 21:29:01 [HTTP] GET /weight desde 127.0.0.1:62386 - Status: 200 - Duración: 39.417µs
+2026/05/03 21:29:01 [HTTP] GET /status desde 127.0.0.1:62387 - Status: 200 - Duración: 18.959µs
+2026/05/03 21:29:01 [DEBUG] Status enviado exitosamente al endpoint https://cfc.fresa.com.ar/pushBasculaStatus
+2026/05/03 21:29:02 [DEBUG] Modo MOCK: generando lectura simulada: 3.00 kg
+2026/05/03 21:29:02 [DEBUG] Actualizando lectura: peso=3.00 kg, scale_id=bascula-2, tiempo=2026-05-03T21:29:02-03:00
+2026/05/03 21:29:02 [DEBUG] Transmitiendo lectura a 0 clientes suscritos
+2026/05/03 21:29:03 [DEBUG] Modo MOCK: generando lectura simulada: 3.50 kg
+2026/05/03 21:29:03 [DEBUG] Actualizando lectura: peso=3.50 kg, scale_id=bascula-2, tiempo=2026-05-03T21:29:03-03:00
+2026/05/03 21:29:03 [DEBUG] Transmitiendo lectura a 0 clientes suscritos

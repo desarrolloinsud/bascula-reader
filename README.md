@@ -12,6 +12,7 @@ Permite integrar básculas físicas con una aplicación en la nube sin exponer e
 * Modo simulación (MOCK) para pruebas sin báscula.
 * API HTTP local:
 
+  * `GET /ping`
   * `GET /status`
   * `GET /weight`
   * `GET /stream` (SSE – streaming tiempo real)
@@ -50,7 +51,7 @@ El ejecutable busca el archivo `.env` en el mismo directorio donde se encuentra.
 Variables disponibles:
 
 ```
-SERVER_PORT=7070        # Puerto HTTP local
+SERVER_PORT=8080        # Puerto HTTP local (la plataforma escanea 8080-8085)
 SERIAL_PORT=COM3        # Puerto serie de la báscula
 BAUD_RATE=9600          # Baudios
 ALLOWED_ORIGIN=*        # CORS (dominio del frontend)
@@ -62,6 +63,25 @@ SCALE_ID=bascula-1      # Identificador lógico (numero de báscula/máquina)
 
 ## 🔌 API HTTP expuesta
 
+### `GET /ping`
+
+Endpoint liviano para descubrimiento local desde el navegador.
+
+```
+{
+  "status": "pong",
+  "last_weight": "12.34 kg",
+  "last_read_at": "2025-11-28T16:00:00Z",
+  "scale_id": "bascula-1",
+  "serial_port": "COM3",
+  "baud_rate": 9600,
+  "http_port": 8082,
+  "serial_connected": true,
+  "use_mock": false,
+  "timestamp": "2025-11-28T16:00:00Z"
+}
+```
+
 ### `GET /status`
 
 ```
@@ -71,8 +91,11 @@ SCALE_ID=bascula-1      # Identificador lógico (numero de báscula/máquina)
   "last_read_at": "2025-11-28T16:00:00Z",
   "scale_id": "bascula-1",
   "serial_port": "COM3",
-  "baud_rate": "9600",
-  "use_mock": false
+  "baud_rate": 9600,
+  "http_port": 8082,
+  "serial_connected": true,
+  "use_mock": false,
+  "timestamp": "2025-11-28T16:00:00Z"
 }
 ```
 
@@ -157,13 +180,13 @@ dist/
 
 ## 🏭 Instalación en Producción
 
-Verifica que la báscula está conectada y el puerto `7070` está libre y operativo.
+Verifica que la báscula está conectada y que el puerto elegido dentro del rango `8080-8085` está libre y operativo.
 
 1. Descargar la carpeta según tu sistema operativo desde `dist/`.
 3. Editar las variables necesarias según el hardware.
 4. Guardar `.env` en la *misma carpeta* del ejecutable.
 
-⚠️ **Advertencia:** cambiar `SERVER_PORT` romperá la demo de la plataforma CFC.
+⚠️ **Recomendación:** usar un puerto entre `8080` y `8085`. La plataforma `vigilancia_accessos` escanea automáticamente ese rango.
 
 ---
 
@@ -238,7 +261,7 @@ Instalar como servicio systemd (`bascula.service`).
 ## 🧩 Integración con Frontend (Vue 3)
 
 ```js
-const es = new EventSource('http://127.0.0.1:7070/stream')
+const es = new EventSource('http://127.0.0.1:8080/stream')
 
 es.onmessage = (event) => {
   const data = JSON.parse(event.data)
