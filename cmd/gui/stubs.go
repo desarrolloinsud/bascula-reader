@@ -15,5 +15,6 @@ func showWizard(fa fyne.App, connector *app.App, cfg config.Config) {
 }
 
 func showDashboard(fa fyne.App, connector *app.App) {
-	guipkg.ShowDashboard(fa, connector)
+	w := guipkg.ShowDashboard(fa, connector)
+	guipkg.SetupTray(fa, connector, w)
 }
