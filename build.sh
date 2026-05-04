@@ -24,34 +24,82 @@ create_env() {
   else
     cat > "${target_dir}/.env" <<'EOF'
 # Configuración del conector de báscula
-SERVER_PORT=7070
+SERVER_PORT=8080
 SERIAL_PORT=COM1
 BAUD_RATE=9600
 ALLOWED_ORIGIN=*
 MOCK_SCALE=true
 SCALE_ID=bascula-1
 ENABLED_DEBUG_MODE=true
-# LOG_DIR vacío = logs en la misma carpeta del ejecutable
-# LOG_DIR=logs
 STATUS_ENDPOINT_URL=https://cfc.fresa.com.ar/pushBasculaStatus
 EOF
     echo "   - .env generado por defecto"
   fi
 }
 
-# Windows 64 bits
-echo ">> [windows-amd64] Compilando..."
+# ── GUI Windows 64 bits (sin consola) ─────────────────────────────────────────
+# Requiere mingw-w64 para cross-compile desde macOS/Linux:
+#   brew install mingw-w64
+echo ">> [GUI windows-amd64] Compilando..."
 mkdir -p "${DIST_DIR}/windows-amd64"
-GOOS=windows GOARCH=amd64 go build -o "${DIST_DIR}/windows-amd64/bascula-windows-amd64.exe" ./cmd
+if command -v x86_64-w64-mingw32-gcc &>/dev/null; then
+  CGO_ENABLED=1 \
+  CC=x86_64-w64-mingw32-gcc \
+  GOOS=windows GOARCH=amd64 \
+  go build \
+    -ldflags="-H windowsgui -s -w" \
+    -o "${DIST_DIR}/windows-amd64/bascula-connector.exe" \
+    ./cmd/gui
+  echo "   ✅ GUI compilado (sin consola)"
+else
+  echo "   ⚠️  mingw-w64 no encontrado — compilando CLI como fallback"
+  GOOS=windows GOARCH=amd64 \
+  go build \
+    -ldflags="-s -w" \
+    -o "${DIST_DIR}/windows-amd64/bascula-connector.exe" \
+    ./cmd/cli
+  echo "   ✅ CLI compilado (instalar mingw-w64 para GUI)"
+fi
 create_env "${DIST_DIR}/windows-amd64"
-echo "   ✅ Compilado"
 
-# Windows 32 bits
-echo ">> [windows-386] Compilando..."
+# ── CLI Windows 64 bits (headless, para servidores) ───────────────────────────
+echo ">> [CLI windows-amd64] Compilando..."
+GOOS=windows GOARCH=amd64 \
+go build \
+  -ldflags="-s -w" \
+  -o "${DIST_DIR}/windows-amd64/bascula-connector-cli.exe" \
+  ./cmd/cli
+echo "   ✅ CLI compilado"
+
+# ── GUI Windows 32 bits ───────────────────────────────────────────────────────
+echo ">> [GUI windows-386] Compilando..."
 mkdir -p "${DIST_DIR}/windows-386"
-GOOS=windows GOARCH=386 go build -o "${DIST_DIR}/windows-386/bascula-windows-386.exe" ./cmd
+if command -v i686-w64-mingw32-gcc &>/dev/null; then
+  CGO_ENABLED=1 \
+  CC=i686-w64-mingw32-gcc \
+  GOOS=windows GOARCH=386 \
+  go build \
+    -ldflags="-H windowsgui -s -w" \
+    -o "${DIST_DIR}/windows-386/bascula-connector.exe" \
+    ./cmd/gui
+  echo "   ✅ GUI 32-bit compilado"
+else
+  GOOS=windows GOARCH=386 \
+  go build \
+    -ldflags="-s -w" \
+    -o "${DIST_DIR}/windows-386/bascula-connector.exe" \
+    ./cmd/cli
+  echo "   ✅ CLI 32-bit compilado (instalar mingw-w64 para GUI)"
+fi
 create_env "${DIST_DIR}/windows-386"
-echo "   ✅ Compilado"
+
+# ── CLI Windows 32 bits ───────────────────────────────────────────────────────
+GOOS=windows GOARCH=386 \
+go build \
+  -ldflags="-s -w" \
+  -o "${DIST_DIR}/windows-386/bascula-connector-cli.exe" \
+  ./cmd/cli
+echo "   ✅ CLI 32-bit compilado"
 
 echo ""
 echo "✅ Build completado."

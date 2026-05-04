@@ -23,6 +23,7 @@ type SerialScale struct {
 	lastError    string
 	recentErrors []string
 	errorMu      sync.RWMutex
+	stopCh       chan struct{}
 }
 
 func NewSerialScale(port string, baud int, scaleID string) *SerialScale {
@@ -31,7 +32,8 @@ func NewSerialScale(port string, baud int, scaleID string) *SerialScale {
 		scaleID:      scaleID,
 		clients:      make(map[chan domain.WeightReading]struct{}),
 		connected:    false,
-		recentErrors: make([]string, 0, 10), // Mantener últimos 10 errores
+		recentErrors: make([]string, 0, 10),
+		stopCh:       make(chan struct{}),
 	}
 }
 
@@ -40,13 +42,24 @@ func (s *SerialScale) StartReading() {
 	appLogger.Info("Iniciando lectura del puerto serial %s @ %d baud", s.cfg.Name, s.cfg.Baud)
 
 	for {
+		select {
+		case <-s.stopCh:
+			appLogger.Info("Lectura serial detenida en %s", s.cfg.Name)
+			return
+		default:
+		}
+
 		ser, err := serial.OpenPort(s.cfg)
 		if err != nil {
 			errorMsg := fmt.Sprintf("No puedo abrir %s: %v", s.cfg.Name, err)
 			s.recordError(errorMsg)
 			appLogger.SerialError("abrir puerto", s.cfg.Name, err)
 			appLogger.Error("No puedo abrir %s: %v. Reintentando en 2s...", s.cfg.Name, err)
-			time.Sleep(2 * time.Second)
+			select {
+			case <-s.stopCh:
+				return
+			case <-time.After(2 * time.Second):
+			}
 			continue
 		}
 
@@ -58,6 +71,15 @@ func (s *SerialScale) StartReading() {
 		buf := make([]byte, 256)
 
 		for {
+			select {
+			case <-s.stopCh:
+				ser.Close()
+				s.setConnected(false)
+				appLogger.Info("Lectura serial detenida en %s", s.cfg.Name)
+				return
+			default:
+			}
+
 			n, err := ser.Read(buf)
 			if err != nil {
 				errorMsg := fmt.Sprintf("Error leyendo del puerto %s: %v", s.cfg.Name, err)
@@ -88,7 +110,20 @@ func (s *SerialScale) StartReading() {
 			appLogger.SerialInfo("Puerto %s cerrado", s.cfg.Name)
 		}
 		s.setConnected(false)
-		time.Sleep(1 * time.Second)
+		select {
+		case <-s.stopCh:
+			return
+		case <-time.After(1 * time.Second):
+		}
+	}
+}
+
+func (s *SerialScale) StopReading() {
+	select {
+	case <-s.stopCh:
+		// ya detenido
+	default:
+		close(s.stopCh)
 	}
 }
 

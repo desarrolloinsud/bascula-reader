@@ -1,9 +1,11 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strconv"
 	"time"
 
 	"bascula-connector/internal/domain"
@@ -13,18 +15,27 @@ import (
 
 type HTTPServer struct {
 	scale         domain.Scale
+	scaleID       string
 	addr          string
+	port          string
+	httpPort      int
 	allowedOrigin string
 	serialPort    string
 	baudRate      int
 	useMock       bool
 	statusSender  *status.StatusSender
+	srv           *http.Server
 }
 
-func NewHTTPServer(scale domain.Scale, port string, allowedOrigin string, serialPort string, baudRate int, useMock bool, statusSender *status.StatusSender) *HTTPServer {
+func NewHTTPServer(scale domain.Scale, scaleID string, port string, allowedOrigin string, serialPort string, baudRate int, useMock bool, statusSender *status.StatusSender) *HTTPServer {
+	httpPort, _ := strconv.Atoi(port)
+
 	return &HTTPServer{
 		scale:         scale,
+		scaleID:       scaleID,
 		addr:          "127.0.0.1:" + port,
+		port:          port,
+		httpPort:      httpPort,
 		allowedOrigin: allowedOrigin,
 		serialPort:    serialPort,
 		baudRate:      baudRate,
@@ -36,13 +47,28 @@ func NewHTTPServer(scale domain.Scale, port string, allowedOrigin string, serial
 func (s *HTTPServer) Start() error {
 	mux := http.NewServeMux()
 
+	mux.HandleFunc("/ping", s.loggingMiddleware(s.handlePing))
 	mux.HandleFunc("/status", s.loggingMiddleware(s.handleStatus))
 	mux.HandleFunc("/weight", s.loggingMiddleware(s.handleWeight))
 	mux.HandleFunc("/stream", s.loggingMiddleware(s.handleStream))
 
+	s.srv = &http.Server{
+		Addr:    s.addr,
+		Handler: mux,
+	}
+
 	appLogger := logger.Get()
 	appLogger.Info("Servidor HTTP escuchando en http://%s ...", s.addr)
-	return http.ListenAndServe(s.addr, mux)
+	return s.srv.ListenAndServe()
+}
+
+func (s *HTTPServer) Stop() error {
+	if s.srv == nil {
+		return nil
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	return s.srv.Shutdown(ctx)
 }
 
 // loggingMiddleware registra todas las peticiones HTTP
@@ -81,6 +107,95 @@ func (lw *loggingResponseWriter) WriteHeader(code int) {
 	lw.ResponseWriter.WriteHeader(code)
 }
 
+type runtimeStatus struct {
+	Connected    bool
+	Error        string
+	RecentErrors []string
+}
+
+type statusResponse struct {
+	Status          string   `json:"status"`
+	ScaleID         string   `json:"scale_id"`
+	SerialPort      string   `json:"serial_port"`
+	BaudRate        int      `json:"baud_rate"`
+	HTTPPort        int      `json:"http_port"`
+	UseMock         bool     `json:"use_mock"`
+	LastWeight      string   `json:"last_weight"`
+	LastReadAt      string   `json:"last_read_at,omitempty"`
+	SerialConnected bool     `json:"serial_connected"`
+	SerialError     string   `json:"serial_error,omitempty"`
+	RecentErrors    []string `json:"recent_errors,omitempty"`
+	Timestamp       string   `json:"timestamp"`
+}
+
+func (s *HTTPServer) currentRuntimeStatus() runtimeStatus {
+	if statusProvider, ok := s.scale.(domain.ScaleStatusProvider); ok {
+		statusInfo := statusProvider.GetStatus()
+		return runtimeStatus{
+			Connected:    statusInfo.Connected,
+			Error:        statusInfo.Error,
+			RecentErrors: statusInfo.RecentErrors,
+		}
+	}
+
+	return runtimeStatus{
+		Connected: s.useMock,
+	}
+}
+
+func (s *HTTPServer) buildStatusResponse(status string) statusResponse {
+	reading := s.scale.LastReading()
+	runtimeStatus := s.currentRuntimeStatus()
+
+	resp := statusResponse{
+		Status:          status,
+		ScaleID:         s.scaleID,
+		SerialPort:      s.serialPort,
+		BaudRate:        s.baudRate,
+		HTTPPort:        s.httpPort,
+		UseMock:         s.useMock,
+		LastWeight:      reading.Weight,
+		SerialConnected: runtimeStatus.Connected,
+		Timestamp:       time.Now().Format(time.RFC3339),
+	}
+
+	if !reading.Time.IsZero() {
+		resp.LastReadAt = reading.Time.Format(time.RFC3339)
+	}
+
+	if reading.ScaleID != "" {
+		resp.ScaleID = reading.ScaleID
+	}
+
+	if runtimeStatus.Error != "" {
+		resp.SerialError = runtimeStatus.Error
+	}
+
+	if len(runtimeStatus.RecentErrors) > 0 {
+		resp.RecentErrors = runtimeStatus.RecentErrors
+	}
+
+	return resp
+}
+
+func (s *HTTPServer) writeJSON(w http.ResponseWriter, endpoint string, payload interface{}) {
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(payload); err != nil {
+		appLogger := logger.Get()
+		appLogger.Error("Error codificando respuesta JSON en %s: %v", endpoint, err)
+	}
+}
+
+func (s *HTTPServer) handlePing(w http.ResponseWriter, r *http.Request) {
+	s.enableCORS(w, r)
+	if r.Method == http.MethodOptions {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+
+	s.writeJSON(w, "/ping", s.buildStatusResponse("pong"))
+}
+
 func (s *HTTPServer) handleStatus(w http.ResponseWriter, r *http.Request) {
 	s.enableCORS(w, r)
 	if r.Method == http.MethodOptions {
@@ -99,23 +214,15 @@ func (s *HTTPServer) handleStatus(w http.ResponseWriter, r *http.Request) {
 		}()
 	}
 
-	reading := s.scale.LastReading()
-
-	resp := map[string]interface{}{
-		"status":       "running",
-		"serial_port":  s.serialPort,
-		"baud_rate":    s.baudRate,
-		"use_mock":     s.useMock,
-		"last_weight":  reading.Weight,
-		"last_read_at": reading.Time.Format(time.RFC3339),
-		"scale_id":     reading.ScaleID,
+	runtimeStatus := s.currentRuntimeStatus()
+	serviceStatus := "running"
+	if runtimeStatus.Error != "" && !s.useMock {
+		serviceStatus = "error"
+	} else if !runtimeStatus.Connected && !s.useMock {
+		serviceStatus = "disconnected"
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(resp); err != nil {
-		appLogger := logger.Get()
-		appLogger.Error("Error codificando respuesta JSON en /status: %v", err)
-	}
+	s.writeJSON(w, "/status", s.buildStatusResponse(serviceStatus))
 }
 
 func (s *HTTPServer) handleWeight(w http.ResponseWriter, r *http.Request) {
@@ -125,11 +232,7 @@ func (s *HTTPServer) handleWeight(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	reading := s.scale.LastReading()
-	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(reading); err != nil {
-		appLogger := logger.Get()
-		appLogger.Error("Error codificando respuesta JSON en /weight: %v", err)
-	}
+	s.writeJSON(w, "/weight", reading)
 }
 
 func (s *HTTPServer) handleStream(w http.ResponseWriter, r *http.Request) {
@@ -192,7 +295,6 @@ func (s *HTTPServer) enableCORS(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Methods", "GET, OPTIONS")
 	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
 	w.Header().Set("Access-Control-Allow-Headers",
-        "Content-Type, X-Requested-With, X-CSRF-TOKEN",
-    )
+		"Content-Type, X-Requested-With, X-CSRF-TOKEN",
+	)
 }
-
