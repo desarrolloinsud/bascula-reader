@@ -158,17 +158,19 @@ func buildStep3(s *wizardState) fyne.CanvasObject {
 	title := widget.NewLabelWithStyle("Puerto HTTP local", fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
 	hint := widget.NewLabel(
 		"El sistema web buscará el conector en localhost:[puerto].\n" +
-			"Usá un valor entre 8080 y 8085 (recomendado: 8080).",
+			"Seleccioná el puerto asignado a esta báscula (recomendado: 8080).",
 	)
 	hint.Wrapping = fyne.TextWrapWord
 
-	portEntry := widget.NewEntry()
-	portEntry.SetText(s.httpPort)
-	portEntry.SetPlaceHolder("8080")
-	portEntry.OnChanged = func(v string) { s.httpPort = v }
+	ports := []string{"8080", "8081", "8082", "8083", "8084", "8085"}
+	portSelect := widget.NewSelect(ports, func(v string) { s.httpPort = v })
+	if s.httpPort == "" {
+		s.httpPort = "8080"
+	}
+	portSelect.SetSelected(s.httpPort)
 
 	return container.NewVBox(title, hint, widget.NewSeparator(), widget.NewForm(
-		widget.NewFormItem("Puerto HTTP", portEntry),
+		widget.NewFormItem("Puerto HTTP", portSelect),
 	))
 }
 
@@ -202,8 +204,8 @@ func validateStep(step int, s *wizardState) error {
 		}
 	case 2:
 		p, err := strconv.Atoi(s.httpPort)
-		if err != nil || p < 1024 || p > 65535 {
-			return fmt.Errorf("el puerto HTTP debe ser un número entre 1024 y 65535")
+		if err != nil || p < 8080 || p > 8085 {
+			return fmt.Errorf("el puerto HTTP debe ser uno de: 8080, 8081, 8082, 8083, 8084, 8085")
 		}
 	}
 	return nil

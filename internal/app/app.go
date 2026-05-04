@@ -84,6 +84,7 @@ func (a *App) StartHTTP() error {
 		a.Cfg.BaudRate,
 		a.Cfg.UseMock,
 		a.statusSndr,
+		a.Cfg.AdminPasswordHash,
 	)
 	a.httpRunning = true
 	a.mu.Unlock()

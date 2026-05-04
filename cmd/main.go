@@ -116,6 +116,7 @@ func main() {
 		cfg.BaudRate,
 		cfg.UseMock,
 		statusSender,
+		cfg.AdminPasswordHash,
 	)
 
 	// Mensaje de inicio exitoso con toda la información relevante

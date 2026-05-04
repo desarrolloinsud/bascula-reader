@@ -51,8 +51,37 @@ func Init(logDir string, detailed bool) error {
 		} else {
 			instance.Info("Logging detallado: DESACTIVADO")
 		}
+
+		go purgeOldLogs(logDir, 30)
 	})
 	return err
+}
+
+// purgeOldLogs elimina archivos bascula-*.log con más de maxDays días de antigüedad.
+func purgeOldLogs(logDir string, maxDays int) {
+	cutoff := time.Now().AddDate(0, 0, -maxDays)
+	entries, err := os.ReadDir(logDir)
+	if err != nil {
+		return
+	}
+	for _, e := range entries {
+		if e.IsDir() {
+			continue
+		}
+		name := e.Name()
+		if len(name) < 16 || name[:8] != "bascula-" || name[len(name)-4:] != ".log" {
+			continue
+		}
+		// nombre: bascula-2006-01-02.log → fecha en posición 8..18
+		dateStr := name[8 : len(name)-4]
+		t, err := time.Parse("2006-01-02", dateStr)
+		if err != nil {
+			continue
+		}
+		if t.Before(cutoff) {
+			_ = os.Remove(filepath.Join(logDir, name))
+		}
+	}
 }
 
 // Get retorna la instancia del logger

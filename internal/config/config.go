@@ -22,6 +22,7 @@ type Config struct {
 	EnabledDebugMode  bool
 	LogDir            string
 	StatusEndpointURL string
+	AdminPasswordHash string
 }
 
 // ensureEnvFile crea un archivo .env por defecto si no existe.
@@ -37,13 +38,17 @@ SERVER_PORT=8080
 SERIAL_PORT=COM1
 BAUD_RATE=9600
 ALLOWED_ORIGIN=*
-MOCK_SCALE=true
+MOCK_SCALE=false
 SCALE_ID=bascula-1
-ENABLED_DEBUG_MODE=true
+ENABLED_DEBUG_MODE=false
 # LOG_DIR vacío = logs en la misma carpeta del ejecutable
 # LOG_DIR=logs
 STATUS_ENDPOINT_URL=https://cfc.fresa.com.ar/pushBasculaStatus
-			`
+# Hash SHA-256 de la contraseña para activar modo MOCK en runtime.
+# Generar: echo -n "tupassword" | sha256sum  (Linux/Mac)
+#          o: Get-FileHash -InputStream ([IO.MemoryStream]::new([Text.Encoding]::UTF8.GetBytes("tupassword"))) -Algorithm SHA256 (PowerShell)
+ADMIN_PASSWORD_HASH=
+`
 		if err := os.WriteFile(envPath, []byte(tmpl), 0644); err != nil {
 			return fmt.Errorf("no se pudo crear .env por defecto en %s: %v", envPath, err)
 		}
@@ -123,9 +128,10 @@ func LoadWithErrors(logWriter ...LogWriter) (Config, []string) {
 		AllowedOrigin:     getEnv("ALLOWED_ORIGIN", "*"),
 		UseMock:           getEnv("MOCK_SCALE", "false") == "true",
 		ScaleID:           getEnv("SCALE_ID", "bascula-1"),
-		EnabledDebugMode:  getEnv("ENABLED_DEBUG_MODE", "true") == "true",
+		EnabledDebugMode:  getEnv("ENABLED_DEBUG_MODE", "false") == "true",
 		LogDir:            logDir,
 		StatusEndpointURL: getEnv("STATUS_ENDPOINT_URL", "https://cfc.fresa.com.ar/pushBasculaStatus"),
+		AdminPasswordHash: strings.ToLower(strings.TrimSpace(getEnv("ADMIN_PASSWORD_HASH", ""))),
 	}
 
 	// Puerto serie por defecto según SO
@@ -163,6 +169,7 @@ var canonicalKeys = []string{
 	"ALLOWED_ORIGIN",
 	"ENABLED_DEBUG_MODE",
 	"STATUS_ENDPOINT_URL",
+	"ADMIN_PASSWORD_HASH",
 }
 
 // canonicalDefaults son los valores por defecto para claves no presentes en values.
@@ -173,8 +180,9 @@ var canonicalDefaults = map[string]string{
 	"BAUD_RATE":           "9600",
 	"MOCK_SCALE":          "false",
 	"ALLOWED_ORIGIN":      "*",
-	"ENABLED_DEBUG_MODE":  "true",
+	"ENABLED_DEBUG_MODE":  "false",
 	"STATUS_ENDPOINT_URL": "https://cfc.fresa.com.ar/pushBasculaStatus",
+	"ADMIN_PASSWORD_HASH": "",
 }
 
 // WriteEnv escribe un archivo .env en path con los valores del map dado.

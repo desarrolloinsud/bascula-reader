@@ -2,10 +2,14 @@ package server
 
 import (
 	"context"
+	"crypto/sha256"
+	"crypto/subtle"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"net/http"
 	"strconv"
+	"sync"
 	"time"
 
 	"bascula-connector/internal/domain"
@@ -14,34 +18,48 @@ import (
 )
 
 type HTTPServer struct {
-	scale         domain.Scale
-	scaleID       string
-	addr          string
-	port          string
-	httpPort      int
-	allowedOrigin string
-	serialPort    string
-	baudRate      int
-	useMock       bool
-	statusSender  *status.StatusSender
-	srv           *http.Server
+	scale             domain.Scale
+	scaleID           string
+	addr              string
+	port              string
+	httpPort          int
+	allowedOrigin     string
+	serialPort        string
+	baudRate          int
+	useMock           bool
+	adminPasswordHash string
+	mockOverride      *bool
+	mu                sync.RWMutex
+	statusSender      *status.StatusSender
+	srv               *http.Server
 }
 
-func NewHTTPServer(scale domain.Scale, scaleID string, port string, allowedOrigin string, serialPort string, baudRate int, useMock bool, statusSender *status.StatusSender) *HTTPServer {
+func NewHTTPServer(scale domain.Scale, scaleID string, port string, allowedOrigin string, serialPort string, baudRate int, useMock bool, statusSender *status.StatusSender, adminPasswordHash string) *HTTPServer {
 	httpPort, _ := strconv.Atoi(port)
 
 	return &HTTPServer{
-		scale:         scale,
-		scaleID:       scaleID,
-		addr:          "127.0.0.1:" + port,
-		port:          port,
-		httpPort:      httpPort,
-		allowedOrigin: allowedOrigin,
-		serialPort:    serialPort,
-		baudRate:      baudRate,
-		useMock:       useMock,
-		statusSender:  statusSender,
+		scale:             scale,
+		scaleID:           scaleID,
+		addr:              "127.0.0.1:" + port,
+		port:              port,
+		httpPort:          httpPort,
+		allowedOrigin:     allowedOrigin,
+		serialPort:        serialPort,
+		baudRate:          baudRate,
+		useMock:           useMock,
+		adminPasswordHash: adminPasswordHash,
+		statusSender:      statusSender,
 	}
+}
+
+// effectiveMock devuelve el modo mock activo: override en memoria si existe, sino el del .env.
+func (s *HTTPServer) effectiveMock() bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if s.mockOverride != nil {
+		return *s.mockOverride
+	}
+	return s.useMock
 }
 
 func (s *HTTPServer) Start() error {
@@ -51,6 +69,7 @@ func (s *HTTPServer) Start() error {
 	mux.HandleFunc("/status", s.loggingMiddleware(s.handleStatus))
 	mux.HandleFunc("/weight", s.loggingMiddleware(s.handleWeight))
 	mux.HandleFunc("/stream", s.loggingMiddleware(s.handleStream))
+	mux.HandleFunc("/admin/mode", s.loggingMiddleware(s.handleAdminMode))
 
 	s.srv = &http.Server{
 		Addr:    s.addr,
@@ -153,7 +172,7 @@ func (s *HTTPServer) buildStatusResponse(status string) statusResponse {
 		SerialPort:      s.serialPort,
 		BaudRate:        s.baudRate,
 		HTTPPort:        s.httpPort,
-		UseMock:         s.useMock,
+		UseMock:         s.effectiveMock(),
 		LastWeight:      reading.Weight,
 		SerialConnected: runtimeStatus.Connected,
 		Timestamp:       time.Now().Format(time.RFC3339),
@@ -216,9 +235,9 @@ func (s *HTTPServer) handleStatus(w http.ResponseWriter, r *http.Request) {
 
 	runtimeStatus := s.currentRuntimeStatus()
 	serviceStatus := "running"
-	if runtimeStatus.Error != "" && !s.useMock {
+	if runtimeStatus.Error != "" && !s.effectiveMock() {
 		serviceStatus = "error"
-	} else if !runtimeStatus.Connected && !s.useMock {
+	} else if !runtimeStatus.Connected && !s.effectiveMock() {
 		serviceStatus = "disconnected"
 	}
 
@@ -293,8 +312,62 @@ func (s *HTTPServer) handleStream(w http.ResponseWriter, r *http.Request) {
 func (s *HTTPServer) enableCORS(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", s.allowedOrigin)
 	w.Header().Set("Access-Control-Allow-Methods", "GET, OPTIONS")
-	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
-	w.Header().Set("Access-Control-Allow-Headers",
-		"Content-Type, X-Requested-With, X-CSRF-TOKEN",
-	)
+	w.Header().Set("Access-Control-Allow-Headers", "Content-Type, X-Requested-With, X-CSRF-TOKEN")
+}
+
+func (s *HTTPServer) enableCORSAdmin(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", s.allowedOrigin)
+	w.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS")
+	w.Header().Set("Access-Control-Allow-Headers", "Content-Type, X-Requested-With, X-CSRF-TOKEN")
+}
+
+func (s *HTTPServer) handleAdminMode(w http.ResponseWriter, r *http.Request) {
+	s.enableCORSAdmin(w, r)
+	if r.Method == http.MethodOptions {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+	if r.Method != http.MethodPost {
+		http.Error(w, "Método no permitido", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var req struct {
+		Mode     string `json:"mode"`     // "mock" o "production"
+		Password string `json:"password"` // requerido solo para activar mock
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "JSON inválido", http.StatusBadRequest)
+		return
+	}
+
+	wantMock := req.Mode == "mock"
+
+	if wantMock {
+		if s.adminPasswordHash == "" {
+			http.Error(w, "Modo MOCK deshabilitado: ADMIN_PASSWORD_HASH no configurado en .env", http.StatusForbidden)
+			return
+		}
+		sum := sha256.Sum256([]byte(req.Password))
+		provided := hex.EncodeToString(sum[:])
+		if subtle.ConstantTimeCompare([]byte(provided), []byte(s.adminPasswordHash)) != 1 {
+			appLogger := logger.Get()
+			appLogger.Info("Intento fallido de activar modo MOCK desde %s", r.RemoteAddr)
+			http.Error(w, "Contraseña incorrecta", http.StatusUnauthorized)
+			return
+		}
+	}
+
+	s.mu.Lock()
+	s.mockOverride = &wantMock
+	s.mu.Unlock()
+
+	appLogger := logger.Get()
+	appLogger.Info("Modo cambiado a '%s' via /admin/mode desde %s", req.Mode, r.RemoteAddr)
+
+	s.writeJSON(w, "/admin/mode", map[string]interface{}{
+		"ok":       true,
+		"mode":     req.Mode,
+		"use_mock": wantMock,
+	})
 }
