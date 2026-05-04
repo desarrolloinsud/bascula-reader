@@ -22,6 +22,7 @@ type Status struct {
 	COMError        string
 	ActivePort      string
 	SerialPort      string
+	ScaleID         string
 	LastWeight      string
 	LastReadAt      string
 }
@@ -174,6 +175,7 @@ func (a *App) GetStatus() Status {
 	st := Status{
 		HTTPRunning: a.httpRunning,
 		ActivePort:  a.Cfg.ServerPort,
+		ScaleID:     a.Cfg.ScaleID,
 		SerialPort:  fmt.Sprintf("%s @ %d baud", a.Cfg.SerialPort, a.Cfg.BaudRate),
 	}
 
