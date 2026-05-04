@@ -153,6 +153,51 @@ func LoadWithErrors(logWriter ...LogWriter) (Config, []string) {
 	return cfg, errors
 }
 
+// canonicalKeys define el orden en que se escriben las claves en el .env.
+var canonicalKeys = []string{
+	"SCALE_ID",
+	"SERVER_PORT",
+	"SERIAL_PORT",
+	"BAUD_RATE",
+	"MOCK_SCALE",
+	"ALLOWED_ORIGIN",
+	"ENABLED_DEBUG_MODE",
+	"STATUS_ENDPOINT_URL",
+}
+
+// canonicalDefaults son los valores por defecto para claves no presentes en values.
+var canonicalDefaults = map[string]string{
+	"SCALE_ID":            "bascula-1",
+	"SERVER_PORT":         "8080",
+	"SERIAL_PORT":         "COM1",
+	"BAUD_RATE":           "9600",
+	"MOCK_SCALE":          "false",
+	"ALLOWED_ORIGIN":      "*",
+	"ENABLED_DEBUG_MODE":  "true",
+	"STATUS_ENDPOINT_URL": "https://cfc.fresa.com.ar/pushBasculaStatus",
+}
+
+// WriteEnv escribe un archivo .env en path con los valores del map dado.
+// Las claves no presentes en values se escriben con sus defaults.
+// Se preserva el orden canónico definido en canonicalKeys.
+func WriteEnv(path string, values map[string]string) error {
+	var sb strings.Builder
+	sb.WriteString("# Configuración del conector de báscula\n")
+	for _, key := range canonicalKeys {
+		val, ok := values[key]
+		if !ok {
+			val = canonicalDefaults[key]
+		}
+		sb.WriteString(key + "=" + val + "\n")
+	}
+	return os.WriteFile(path, []byte(sb.String()), 0644)
+}
+
+// EnvPath retorna la ruta canónica del .env junto al ejecutable.
+func EnvPath() string {
+	return getEnvPath()
+}
+
 func getEnv(key, def string) string {
 	if v, ok := os.LookupEnv(key); ok {
 		return v
